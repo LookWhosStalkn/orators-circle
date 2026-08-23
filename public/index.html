@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Orator's Circle — Live Debate Chamber</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗣️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Spectral:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════ JOIN SCREEN ═══════════ -->
+  <section id="join" class="screen">
+    <div class="join-card">
+      <div class="brand">
+        <span class="brand-mark">🗣️</span>
+        <h1>The Orator&rsquo;s Circle</h1>
+        <p class="tagline">A live debate chamber — speak with evidence, timing &amp; poise.</p>
+      </div>
+
+      <form id="join-form" autocomplete="off">
+        <label class="field">Display name
+          <input id="f-name" maxlength="40" required placeholder="Ada Lovelace">
+        </label>
+        <label class="field">Room code
+          <input id="f-room" maxlength="48" required placeholder="e.g. finals-2026" pattern="[A-Za-z0-9_-]+">
+        </label>
+        <div class="roles" id="role-select">
+          <button type="button" class="role-btn active" data-role="participant">🎤 Speaker</button>
+          <button type="button" class="role-btn" data-role="audience">👀 Audience</button>
+          <button type="button" class="role-btn host" data-role="host">⚖️ Host</button>
+        </div>
+        <label class="field hidden" id="pass-wrap">Host passcode
+          <input id="f-pass" type="password" placeholder="host passcode">
+        </label>
+        <button class="primary big" id="join-btn" type="submit">Enter the chamber</button>
+      </form>
+      <p class="join-error hidden" id="join-error"></p>
+
+      <details class="admin-box">
+        <summary>⚙️ Room management (admin)</summary>
+        <div class="admin-inner">
+          <div class="row">
+            <input id="a-pass" type="password" placeholder="host passcode">
+            <button id="a-login" class="secondary" type="button">Unlock</button>
+          </div>
+          <div id="a-rooms" class="a-rooms"></div>
+        </div>
+      </details>
+
+      <footer class="join-foot">Powered by LiveKit · recording · moderation · speaking floor · chat</footer>
+    </div>
+  </section>
+
+  <!-- ═══════════ ROOM SCREEN ═══════════ -->
+  <section id="room" class="screen hidden">
+    <header id="topbar">
+      <div class="tb-left">
+        <div class="brand-mini">🗣️</div>
+        <div>
+          <div class="room-name" id="room-name">room</div>
+          <div class="room-meta"><span id="conn-dot" class="dot warn"></span><span id="conn-txt">connecting…</span> · <span id="pcount">0</span> in chamber</div>
+        </div>
+      </div>
+
+      <div id="timer-wrap" class="hidden">
+        <div id="timer" class="timer">05:00</div>
+        <div id="timer-label" class="timer-label"></div>
+      </div>
+
+      <div class="tb-right">
+        <span id="rec-badge" class="rec-badge hidden">● REC <span id="rec-time">00:00</span></span>
+        <button id="btn-copy" class="ghost" title="Copy invite link">🔗 <span class="hide-sm">Invite</span></button>
+        <button id="btn-panel" class="ghost hide-lg" title="Panels">☰</button>
+        <button id="btn-leave" class="danger-ghost">Leave</button>
+      </div>
+    </header>
+
+    <main id="stage"><div id="grid" class="grid"></div></main>
+
+    <aside id="sidebar" class="sidebar">
+      <nav class="tabs">
+        <button class="tab active" data-tab="chat">💬 Chat</button>
+        <button class="tab" data-tab="floor">🎙️ Floor <span id="qcount" class="badge-count hidden"></span></button>
+        <button class="tab" data-tab="people">👥 People</button>
+      </nav>
+
+      <div class="tab-body" id="tab-chat">
+        <div id="chat-list" class="chat-list"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" maxlength="500" placeholder="Type a message…">
+          <button id="chat-send" class="primary">Send</button>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" id="tab-floor">
+        <div id="queue-list" class="queue-list"></div>
+        <div class="host-only hidden" id="queue-tools">
+          <button id="q-next" class="secondary">⏭ Next speaker</button>
+          <button id="q-clear" class="ghost">Clear queue</button>
+        </div>
+        <p class="hint" id="queue-hint">Raise your hand to join the speaking queue — the host grants the floor.</p>
+      </div>
+
+      <div class="tab-body hidden" id="tab-people">
+        <div id="people-list" class="people-list"></div>
+        <div class="host-only hidden" id="room-tools">
+          <button id="rt-muteall" class="secondary">🔇 Mute all</button>
+          <button id="rt-clearchat" class="secondary">🧹 Clear chat</button>
+          <button id="rt-end" class="danger">⛔ End room</button>
+        </div>
+      </div>
+    </aside>
+
+    <div id="controls" class="controls">
+      <button id="btn-mic" class="ctl" title="Microphone">🎙️<span class="ctl-label">Mic</span></button>
+      <button id="btn-cam" class="ctl" title="Camera">📷<span class="ctl-label">Cam</span></button>
+      <button id="btn-screen" class="ctl" title="Share screen">🖥️<span class="ctl-label">Share</span></button>
+      <button id="btn-hand" class="ctl" title="Raise hand">✋<span class="ctl-label">Hand</span></button>
+      <button id="btn-timer" class="ctl host-only hidden" title="Debate timer">⏱️<span class="ctl-label">Timer</span></button>
+      <button id="btn-rec" class="ctl host-only hidden" title="Record session">⏺️<span class="ctl-label">Record</span></button>
+    </div>
+
+    <!-- timer popover -->
+    <div id="timer-pop" class="popover hidden">
+      <div class="pop-title">Debate timer</div>
+      <div class="chips" id="timer-chips">
+        <button data-s="60">1:00</button>
+        <button data-s="120">2:00</button>
+        <button data-s="180" class="on">3:00</button>
+        <button data-s="300">5:00</button>
+      </div>
+      <div class="row">
+        <input id="timer-custom" type="number" min="5" max="3600" placeholder="Custom seconds">
+        <button id="timer-set" class="secondary" type="button">Set</button>
+      </div>
+      <div class="row">
+        <button id="timer-start" class="primary" type="button">▶ Start</button>
+        <button id="timer-pause" class="secondary" type="button">⏸ Pause</button>
+        <button id="timer-reset" class="secondary" type="button">Reset</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toasts"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
