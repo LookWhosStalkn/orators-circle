@@ -20,6 +20,9 @@ const S3 = process.env.S3_ACCESS_KEY
     }
   : null;
 
+// never crash on async route errors (Express 4 doesn't catch them)
+process.on('unhandledRejection', (err) => console.error('unhandledRejection:', err));
+
 const app = express();
 app.use(
   express.json({
@@ -68,7 +71,7 @@ function permissionFor(role) {
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
-      canPublishSources: ['microphone', 'camera', 'screen_share'],
+      canPublishSources: [1, 2, 3], // TrackSource: CAMERA=1, MICROPHONE=2, SCREEN_SHARE=3
       canUpdateOwnMetadata: true,
       roomAdmin: true,
     };
@@ -78,18 +81,18 @@ function permissionFor(role) {
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
-      canPublishSources: ['microphone', 'camera', 'screen_share'],
+      canPublishSources: [1, 2, 3], // TrackSource: CAMERA=1, MICROPHONE=2, SCREEN_SHARE=3
     };
   }
   // audience: watch + chat, cannot publish media
   return { canPublish: false, canSubscribe: true, canPublishData: true, canPublishSources: [] };
 }
 
-function issueToken(room, name, role, identity) {
+async function issueToken(room, name, role, identity) {
   const at = new AccessToken(API_KEY, API_SECRET, { identity, name, ttl: '6h' });
   const g = permissionFor(role);
   at.addGrant({ roomJoin: true, room, ...g });
-  return at.toJwt();
+  return await at.toJwt(); // toJwt() is async in livekit-server-sdk >= 2.13
 }
 
 async function muteIdentity(room, identity) {
@@ -122,7 +125,7 @@ app.post('/api/token', requireLk, async (req, res) => {
         await roomsClient.createRoom({ name: room, emptyTimeout: 600, maxParticipants: 60 });
       }
     }
-    const token = issueToken(room, name, role, identity);
+    const token = await issueToken(room, name, role, identity);
     return res.json({ token, url: LIVEKIT_URL, role, identity, room });
   } catch (e) {
     console.error('token error', e);
