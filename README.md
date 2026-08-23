@@ -17,7 +17,7 @@ LiveKit Server SDK.
 | 💬 Chat | Real-time chat with history (late joiners see prior messages), host can clear it |
 | 🎙️ Speaking floor | Participants **raise hand** → queue → host **grants the floor** (pinned + ribbon) |
 | ⏱️ Debate timer | Presets (1:00/2:00/3:00/5:00) or custom, start/pause/reset, synced to everyone, red pulse under 30s, "Time's up!" alert |
-| ⏺️ Recording | One-click session recording via LiveKit Egress (S3 on Cloud, file on self-hosted); REC badge shown to everyone |
+| ⏺️ Recording | **Records straight to the host's laptop** — browser-composited capture of all video/audio/screenshares, saved as `.webm` when you stop. No S3, no cloud storage. (Server-side LiveKit Egress endpoints remain available for S3 setups.) |
 | ⚖️ Hosting perms | Host passcode gates room creation; hosts can: mute individuals, **mute all**, demote to Audience (no publishing), remove participants, end the room |
 | 👥 Roles | **Host** (full control) · **Speaker** (publish + hand) · **Audience** (watch + chat only) |
 | 🔗 Invites | Copy deep link `?room=code`; URL params prefill the join form |

@@ -279,6 +279,7 @@ function attachTrack(track, participant, isScreen) {
     media.play().catch(() => {});
   } catch {}
   if (isScreen) el.classList.add('showing-screen');
+  if (track.kind === 'audio') LocalRecorder.connectTrack(track);
   updateTile(participant);
 }
 
@@ -294,12 +295,14 @@ function detachTrack(track, participant, isScreen) {
     const v = el.querySelector('.video-main');
     v.srcObject = null; v.removeAttribute('src');
   }
+  if (track.kind === 'audio') LocalRecorder.disconnectTrack(track);
   updateTile(participant);
 }
 
 function trackMutedUI(pub, participant) { updateTile(participant); }
 
 function removeParticipant(p) {
+  for (const pub of p.audioTracks.values()) if (pub.track) LocalRecorder.disconnectTrack(pub.track);
   const entry = state.participants.get(p.identity);
   if (entry) entry.el.remove();
   state.participants.delete(p.identity);
@@ -525,7 +528,141 @@ document.addEventListener('click', (e) => {
   if (!els.timerPop.classList.contains('hidden') && !els.timerPop.contains(e.target) && e.target !== els.btnTimer) els.timerPop.classList.add('hidden');
 });
 
-/* ── recording ── */
+/* ── recording (local, straight to this laptop) ── */
+
+const LocalRecorder = {
+  active: false, canvas: null, ctx: null, audioCtx: null, dest: null,
+  trackSources: new Map(), recorder: null, chunks: [], timer: null, startedAt: 0,
+
+  connectTrack(track) {
+    if (!this.active || !this.audioCtx || this.trackSources.has(track)) return;
+    try {
+      const src = this.audioCtx.createMediaStreamSource(new MediaStream([track]));
+      src.connect(this.dest);
+      this.trackSources.set(track, src);
+    } catch {}
+  },
+  disconnectTrack(track) {
+    const src = this.trackSources.get(track);
+    if (src) { try { src.disconnect(); } catch {} this.trackSources.delete(track); }
+  },
+
+  start() {
+    if (this.active) return;
+    const W = 1280, H = 720;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = W; this.canvas.height = H;
+    this.canvas.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext('2d');
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.dest = this.audioCtx.createMediaStreamDestination();
+    this.trackSources = new Map();
+    for (const [, e] of state.participants) {
+      for (const pub of e.p.audioTracks.values()) if (pub.track) this.connectTrack(pub.track);
+    }
+    const stream = this.canvas.captureStream(15);
+    stream.addTrack(this.dest.stream.getAudioTracks()[0]);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm';
+    this.recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_000_000 });
+    this.chunks = [];
+    this.recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) this.chunks.push(ev.data); };
+    this.recorder.onstop = () => this.save();
+    this.recorder.start(1000);
+    this.active = true;
+    this.startedAt = Date.now();
+    this.timer = setInterval(() => this.draw(W, H), 100);
+  },
+
+  draw(W, H) {
+    const ctx = this.ctx; if (!ctx) return;
+    ctx.fillStyle = '#070b16';
+    ctx.fillRect(0, 0, W, H);
+    const entries = [...state.participants.values()].sort((a, b) => {
+      const rank = (x) => (x.p.identity === state.pinned ? 0 : x.el.classList.contains('speaking') ? 1 : 2);
+      return rank(a) - rank(b);
+    });
+    const n = entries.length;
+    if (n === 0) { this.drawHeader(W); return; }
+    const cols = n === 1 ? 1 : n <= 4 ? 2 : 3;
+    const rows = Math.ceil(n / cols);
+    const cw = W / cols, ch = H / rows;
+    entries.forEach((e, i) => {
+      const x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
+      const tile = e.el;
+      const vid = tile.classList.contains('showing-screen') ? tile.querySelector('.video-screen') : tile.querySelector('.video-main');
+      ctx.fillStyle = '#141b30';
+      ctx.fillRect(x, y, cw, ch);
+      if (vid && vid.videoWidth > 0) {
+        const vw = vid.videoWidth, vh = vid.videoHeight;
+        const scale = Math.max(cw / vw, ch / vh);
+        const sw = cw / scale, sh = ch / scale;
+        ctx.drawImage(vid, (vw - sw) / 2, (vh - sh) / 2, sw, sh, x, y, cw, ch);
+      } else {
+        ctx.fillStyle = '#1a2240';
+        ctx.fillRect(x, y, cw, ch);
+        ctx.fillStyle = '#8b94ad';
+        ctx.font = '64px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎭', x + cw / 2, y + ch / 2 + 22);
+        ctx.textAlign = 'left';
+      }
+      const name = (e.p.name || e.p.identity) + (e.p.identity === state.identity ? ' (you)' : '');
+      ctx.font = '600 15px Inter, sans-serif';
+      const tw = ctx.measureText(name).width + 22;
+      ctx.fillStyle = 'rgba(7,11,22,.72)';
+      ctx.fillRect(x + 8, y + ch - 34, tw, 26);
+      ctx.fillStyle = '#e8ecf8';
+      ctx.fillText(name, x + 19, y + ch - 15);
+      if (e.p.identity === state.pinned) {
+        ctx.strokeStyle = '#e3b34c'; ctx.lineWidth = 4;
+        ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4);
+      }
+    });
+    this.drawHeader(W);
+  },
+
+  drawHeader(W) {
+    const ctx = this.ctx;
+    const elapsed = Math.floor((Date.now() - this.startedAt) / 1000);
+    const t = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+    ctx.fillStyle = 'rgba(7,11,22,.85)';
+    ctx.fillRect(0, 0, W, 44);
+    ctx.fillStyle = '#ff5c6c';
+    ctx.beginPath(); ctx.arc(20, 22, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8ecf8';
+    ctx.font = '600 16px Inter, sans-serif';
+    ctx.fillText(`REC ${t}  ·  ${state.roomName}  ·  ${new Date().toLocaleString()}`, 36, 29);
+  },
+
+  stop() {
+    if (!this.active) return;
+    this.active = false;
+    clearInterval(this.timer);
+    try { this.recorder.stop(); } catch {}
+    this.trackSources.forEach((src) => { try { src.disconnect(); } catch {} });
+    this.trackSources.clear();
+    try { this.audioCtx.close(); } catch {}
+    this.audioCtx = null;
+    if (this.canvas) { this.canvas.remove(); this.canvas = null; }
+  },
+
+  save() {
+    if (!this.chunks.length) { toast('Recording was empty — nothing saved.', 'bad'); return; }
+    const blob = new Blob(this.chunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}`;
+    a.href = URL.createObjectURL(blob);
+    a.download = `orators-circle_${state.roomName}_${stamp}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`Recording saved: ${a.download} (${(blob.size / 1048576).toFixed(1)} MB)`, 'good', 7000);
+  },
+};
 
 function setRec(on, since) {
   state.rec = { on, since: since || Date.now() };
@@ -535,22 +672,18 @@ function setRec(on, since) {
   els.btnRec.querySelector('.ctl-label').textContent = on ? 'Stop' : 'Record';
 }
 
-els.btnRec.addEventListener('click', async () => {
-  const room = encodeURIComponent(state.roomName);
-  try {
-    if (!state.rec.on) {
-      await api(`/api/rooms/${room}/record/start`, 'POST', {}, true);
-      const since = Date.now();
-      setRec(true, since);
-      sendData({ t: 'rec', on: true, since });
-      toast('Recording started — everyone sees the REC badge. ⏺️', 'good');
-    } else {
-      await api(`/api/rooms/${room}/record/stop`, 'POST', {}, true);
-      setRec(false);
-      sendData({ t: 'rec', on: false, since: 0 });
-      toast('Recording stopped. Check your LiveKit egress output (S3/file path).', 'info');
-    }
-  } catch (err) { toast(err.message, 'bad'); }
+els.btnRec.addEventListener('click', () => {
+  if (!state.rec.on) {
+    LocalRecorder.start();
+    const since = Date.now();
+    setRec(true, since);
+    sendData({ t: 'rec', on: true, since });
+    toast('Recording on THIS laptop — the file downloads when you stop. ⏺️', 'good');
+  } else {
+    LocalRecorder.stop();
+    setRec(false);
+    sendData({ t: 'rec', on: false, since: 0 });
+  }
 });
 
 /* ── controls ── */
@@ -679,6 +812,7 @@ function resetToLobby(reason) {
   els.timerWrap.classList.add('hidden');
   els.recBadge.classList.add('hidden');
   els.timerPop.classList.add('hidden');
+  if (LocalRecorder.active) LocalRecorder.stop();
   els.sidebar.classList.add('closed');
   els.tabs[0].click();
   setRec(false);
