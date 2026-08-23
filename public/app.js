@@ -29,6 +29,7 @@ const state = {
 const els = {
   join: $('#join'), room: $('#room'),
   joinForm: $('#join-form'), fName: $('#f-name'), fRoom: $('#f-room'),
+  joinBtn: $('#join-btn'),
   passWrap: $('#pass-wrap'), fPass: $('#f-pass'), joinError: $('#join-error'),
   roleBtns: [...document.querySelectorAll('.role-btn')],
   roomName: $('#room-name'), connDot: $('#conn-dot'), connTxt: $('#conn-txt'), pcount: $('#pcount'),
